@@ -171,17 +171,15 @@ Output (11×266×476)
 
 ---
 
-## Performance
+## Performance (on rtx4050)
 
 | Metric | Value |
 |--------|-------|
 | Resolution | 476×266 pixels |
-| Parameters | ~86M |
-| GPU Time | 50-100ms |
-| CPU Time | 500-1000ms |
-| GPU Memory | ~2GB VRAM |
+| Parameters | ~92M |
+| GPU Time | 30-50ms |
+| CPU Time | 250-400ms |
 | Model Size | ~330MB |
-| Training | ~2-4 hours (10 epochs) |
 
 ---
 
