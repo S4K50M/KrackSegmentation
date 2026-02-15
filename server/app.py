@@ -115,7 +115,7 @@ W, H = 476, 266
 
 # Load Local Model
 model = DinoTerrainMax(num_classes=11).to(DEVICE)
-model.load_state_dict(torch.load("stats/best_model.pth", map_location=DEVICE))
+model.load_state_dict(torch.load("../stats/best_model.pth", map_location=DEVICE))
 model.eval()
 
 PALETTE = [
