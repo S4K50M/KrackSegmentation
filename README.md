@@ -1,12 +1,10 @@
-```
    _____ _____ _____ _____ _____ _______ _____ ____  _   _ 
   / ____|  __ \__   __|  __ \_   _|__   __/ ____/ __ \| \ | |
  | (___ | |__) | | |  | |__) || |    | | | |   | |  | |  \| |
   \___ \|  _  /  | |  |  _  / | |    | | | |   | |  | | . ` |
   ____) | | \ \  | |  | | \ \_| |_   | | | |___| |__| | |\  |
- |_____/|_|  \_\ |_|  |_|  \_\_____|  |_|  \_____\____/|_| \_|
-                                                                
-```
+ |_____/|_|  \_\ |_|  |_|  \_\_____|  |_|  \_____\____/|_| \_|  
+                                                                 
 
 # DinoTerrainMax: Semantic Segmentation Analysis
 
@@ -191,6 +189,8 @@ Then open your browser and navigate to `http://localhost:6006`
 - Learning rate schedule
 - Per-class IoU breakdown
 
+![TensorBoard Visualization](images/tensorboard.png)
+
 ### 3. Testing and Evaluation
 
 After training, evaluate the model on the test set:
@@ -246,6 +246,8 @@ The web server will start at `http://127.0.0.1:8000`
 - Automatically loads `stats/best_model.pth`
 - Detects GPU availability (falls back to CPU)
 - Serves static files from `server/static/`
+
+![Web Server Interface](images/server.png)
 
 ---
 
