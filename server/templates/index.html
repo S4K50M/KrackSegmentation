@@ -16,43 +16,36 @@
         .status-dot { width: 8px; height: 8px; border-radius: 50%; }
         .online { background: #00cc00; box-shadow: 0 0 5px #00cc00; }
         .offline { background: #cc0000; box-shadow: 0 0 5px #cc0000; }
-        .loading { background: #ffa500; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0.5; } }
+        
+        /* ERROR ALERT BOX */
+        .alert { background: #fff1f1; color: #d93025; padding: 15px 20px; border: 1px solid #d93025; margin: 20px 40px 0 40px; font-family: var(--mono); font-size: 12px; }
 
         main { flex: 1; width: 100%; max-width: 1600px; margin: 0 auto; padding: 40px; display: flex; flex-direction: column; }
         
-        /* UPLOAD STYLES */
         .upload-wrapper { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 60vh; gap: 20px; }
-        .upload-row { display: flex; gap: 20px; justify-content: center; width: 100%; }
-        .upload-area { 
-            border: 1px dashed var(--fg); padding: 40px 20px; text-align: center; cursor: pointer; 
-            background: #fafafa; position: relative; transition: 0.2s; flex: 1; max-width: 400px;
-        }
+        .upload-row { display: flex; gap: 20px; justify-content: center; width: 100%; flex-wrap: wrap; }
+        .upload-area { border: 1px dashed var(--fg); padding: 40px 20px; text-align: center; cursor: pointer; background: #fafafa; position: relative; transition: 0.2s; flex: 1; min-width: 280px; max-width: 400px; }
         .upload-area:hover { background-color: #f0f0f0; border-color: #000; }
-        .upload-label { font-family: var(--mono); font-size: 12px; letter-spacing: 1px; margin-top: 10px; text-transform: uppercase; }
+        .upload-label { font-family: var(--mono); font-size: 12px; letter-spacing: 1px; margin-top: 10px; text-transform: uppercase; font-weight: bold; }
         input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
-        .submit-btn {
-            background: var(--fg); color: var(--bg); border: none; padding: 15px 60px; 
-            font-family: var(--mono); font-size: 14px; cursor: pointer; text-transform: uppercase; 
-            align-self: center; margin-top: 10px;
-        }
-        .submit-btn:hover { opacity: 0.9; }
+        
+        .submit-btn { background: var(--fg); color: var(--bg); border: none; padding: 15px 60px; font-family: var(--mono); font-size: 14px; cursor: pointer; text-transform: uppercase; align-self: center; margin-top: 20px; }
 
-        /* RESULT GRID */
+        /* IMPROVED VISUALS GRID */
         .results-grid { display: grid; grid-template-columns: 3fr 1fr; gap: 40px; }
-        .visuals { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .visuals { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
         .img-container { border: 1px solid var(--border); position: relative; background: #f9f9f9; }
         .img-container img { width: 100%; display: block; }
-        .label { position: absolute; top: 0; left: 0; background: var(--fg); color: var(--bg); padding: 6px 10px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; }
+        .label { position: absolute; top: 0; left: 0; background: var(--fg); color: var(--bg); padding: 6px 10px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; z-index: 10; }
         
         .metrics-panel { border-left: 1px solid var(--border); padding-left: 40px; display: flex; flex-direction: column; gap: 30px; }
         .metric-value { font-size: 32px; font-weight: 300; }
         .metric-unit { font-size: 12px; color: #666; margin-left: 5px; }
-        .class-list li { padding: 8px 0; border-bottom: 1px solid #eee; font-size: 13px; display: flex; justify-content: space-between; }
+        .class-list li { padding: 10px 0; border-bottom: 1px solid #eee; font-size: 13px; display: flex; justify-content: space-between; }
         
-        .btn { background: var(--fg); color: var(--bg); border: none; padding: 14px 0; width: 100%; font-family: var(--mono); cursor: pointer; text-decoration: none; display: flex; justify-content: center; margin-top: auto; }
+        .btn-reset { background: var(--fg); color: var(--bg); border: none; padding: 16px 0; width: 100%; font-family: var(--mono); cursor: pointer; text-decoration: none; display: flex; justify-content: center; margin-top: auto; }
         
-        #tooltip { position: fixed; background: rgba(0,0,0,0.9); color: #fff; padding: 5px 10px; font-family: var(--mono); font-size: 11px; display: none; pointer-events: none; z-index: 100; border: 1px solid #333; }
+        #tooltip { position: fixed; background: rgba(0,0,0,0.9); color: #fff; padding: 6px 12px; font-family: var(--mono); font-size: 11px; display: none; pointer-events: none; z-index: 1000; border: 1px solid #333; }
         
         @media (max-width: 1024px) { .results-grid { grid-template-columns: 1fr; } .metrics-panel { border-left: none; border-top: 1px solid var(--border); padding-left: 0; padding-top: 40px; } }
     </style>
@@ -66,26 +59,34 @@
             {{ status_text }}
         </div>
     </header>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert">ERROR: {{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
     <main>
         {% if not src %}
         <div class="upload-wrapper">
-            <form action="/" method="post" enctype="multipart/form-data" style="display:flex; flex-direction:column; width:100%;">
+            <form action="/" method="post" enctype="multipart/form-data" style="display:flex; flex-direction:column;">
                 <div class="upload-row">
                     <div class="upload-area">
                         <div style="font-size: 24px;">+</div>
-                        <div class="upload-label">UPLOAD IMAGE</div>
-                        <div id="file-name" style="font-size: 10px; color: #666; margin-top: 5px;">Required</div>
-                        <input type="file" name="file" id="file-input" required onchange="document.getElementById('file-name').innerText = this.files[0].name">
+                        <div class="upload-label">Input Image</div>
+                        <div id="fn" style="font-size: 10px; color: #888; margin-top: 5px;">Required</div>
+                        <input type="file" name="file" required onchange="document.getElementById('fn').innerText = this.files[0].name">
                     </div>
-
-                    <div class="upload-area" style="border-style: dotted; background: #fff;">
-                        <div style="font-size: 24px; color: #aaa;">+</div>
-                        <div class="upload-label" style="color: #aaa;">TRUE MASK</div>
-                        <div id="mask-name" style="font-size: 10px; color: #aaa; margin-top: 5px;">Optional</div>
-                        <input type="file" name="mask_file" id="mask-input" onchange="document.getElementById('mask-name').innerText = this.files[0].name">
+                    <div class="upload-area" style="border-style: dotted;">
+                        <div style="font-size: 24px;">+</div>
+                        <div class="upload-label">Ground Truth</div>
+                        <div id="mn" style="font-size: 10px; color: #888; margin-top: 5px;">Optional</div>
+                        <input type="file" name="mask_file" onchange="document.getElementById('mn').innerText = this.files[0].name">
                     </div>
                 </div>
-                <button type="submit" class="submit-btn">RUN ANALYSIS</button>
+                <button type="submit" class="submit-btn">Run Analysis</button>
             </form>
         </div>
         {% endif %}
@@ -94,21 +95,22 @@
         <div class="results-grid">
             <div class="visuals">
                 <div class="img-container">
-                    <div class="label">INPUT</div>
+                    <div class="label">Input</div>
                     <img src="{{ src }}">
                 </div>
                 <div class="img-container">
-                    <div class="label">PREDICTION</div>
+                    <div class="label">Prediction</div>
                     <img src="{{ res }}" id="resultImage">
                     <canvas id="hiddenCanvas" style="display:none;"></canvas>
                 </div>
                 {% if true_mask_src %}
                 <div class="img-container">
-                    <div class="label">GROUND TRUTH</div>
+                    <div class="label">Ground Truth</div>
                     <img src="{{ true_mask_src }}">
                 </div>
                 {% endif %}
             </div>
+            
             <div class="metrics-panel">
                 <div>
                     <h3 style="font-family:'Courier New'; font-size:10px; color:#888;">LATENCY</h3>
@@ -134,9 +136,10 @@
                         {% endfor %}
                     </ul>
                 </div>
-                <a href="/" class="btn">ANALYZE NEXT</a>
+                <a href="/" class="btn-reset">NEW ANALYSIS</a>
             </div>
         </div>
+
         <script>
             const CLASS_MAP = {{ class_map | tojson }};
             const resultImg = document.getElementById('resultImage');
