@@ -11,7 +11,7 @@
 
 **High-Fidelity Terrain Classification System**
 
-[![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen)](http://43.204.148.104:8000)
+[![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen)](http://43.204.148.104)
 
 ---
 
