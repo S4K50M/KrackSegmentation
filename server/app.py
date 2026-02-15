@@ -1,202 +1,202 @@
-import io
-import base64
+import os
 import time
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import json
+import boto3
+import warnings
 import numpy as np
-from flask import Flask, render_template, request
+from flask import Flask, request, render_template, url_for
 from PIL import Image
-from torchvision import transforms
 
-# --- Configuration ---
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_PATH = "../stats/best_model_test1.pth"
-IMG_WIDTH = int(((960 / 2) // 14) * 14)
-IMG_HEIGHT = int(((540 / 2) // 14) * 14)
-NUM_CLASSES = 10
+# ---------------------------------------------------------
+# 1. SUPPRESS WARNINGS & CONFIG
+# ---------------------------------------------------------
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
 
-# --- Labels & Palette ---
-LABELS = {
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'static'
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# AWS CONFIGURATION
+REGION = "ap-south-1"
+ENDPOINT_NAME = "dino-terrain-endpoint" 
+
+# AWS Clients
+sm_runtime = boto3.client("sagemaker-runtime", region_name=REGION)
+sm_client = boto3.client("sagemaker", region_name=REGION)
+
+# Color Palette (Matches training)
+PALETTE = [
+    [0, 0, 0],       # 0: Background
+    [128, 0, 0],     # 1: Trees
+    [0, 128, 0],     # 2: Lush Bushes
+    [128, 128, 0],   # 3: Dry Grass
+    [0, 0, 128],     # 4: Dry Bushes
+    [128, 0, 128],   # 5: Ground Clutter
+    [0, 128, 128],   # 6: Logs
+    [128, 128, 128], # 7: Rocks
+    [64, 0, 0],      # 8: Landscape
+    [192, 0, 0],     # 9: Sky
+    [64, 128, 0]     # 10: Other
+]
+
+CLASS_NAMES = {
     0: "Background", 1: "Trees", 2: "Lush Bushes", 3: "Dry Grass",
-    4: "Dry Bushes", 5: "Ground Clutter", 6: "Logs", 7: "Rocks",
-    8: "Landscape", 9: "Sky"
+    4: "Dry Bushes", 5: "Ground Clutter", 6: "flowers", 7: "logs",
+    8: "Rocks", 9: "Landscape", 10: "sky"
 }
 
-PALETTE = np.array([
-    [0, 0, 0],         # 0: Background
-    [34, 139, 34],     # 1: Trees
-    [50, 205, 50],     # 2: Lush Bushes
-    [218, 165, 32],    # 3: Dry Grass
-    [139, 69, 19],     # 4: Dry Bushes
-    [128, 0, 0],       # 5: Ground Clutter
-    [160, 82, 45],     # 6: Logs
-    [112, 128, 144],   # 7: Rocks
-    [72, 61, 139],     # 8: Landscape
-    [135, 206, 235],   # 9: Sky
-], dtype=np.uint8)
+# Mapping for Ground Truth (Matches your Training Data Logic)
+# We map raw pixel values (0, 100, 200...) to class IDs (0, 1, 2...)
+MASK_MAPPING = {0:0, 100:1, 200:2, 300:3, 500:4, 550:5, 600:6, 700:7, 800:8, 7100:9, 10000:10}
 
-# --- Model Definitions ---
-class LKA(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.conv0 = nn.Conv2d(dim, dim, 5, padding=2, groups=dim)
-        self.conv_spatial = nn.Conv2d(dim, dim, 7, stride=1, padding=9, dilation=3, groups=dim)
-        self.conv1 = nn.Conv2d(dim, dim, 1)
-    def forward(self, x):
-        u = x.clone(); attn = self.conv0(x); attn = self.conv_spatial(attn); attn = self.conv1(attn)
-        return u * attn
-
-class DeepComplexDecoder(nn.Module):
-    def __init__(self, in_channels, embedding_dim, num_classes):
-        super().__init__()
-        self.refiners = nn.ModuleList([
-            nn.Sequential(nn.Conv2d(in_channels, embedding_dim, 1), nn.GroupNorm(32, embedding_dim), nn.ReLU())
-            for _ in range(4) 
-        ])
-        self.lka = LKA(embedding_dim * 4)
-        self.fusion = nn.Sequential(
-            nn.Conv2d(embedding_dim * 4, embedding_dim, 3, padding=1, bias=False),
-            nn.GroupNorm(32, embedding_dim), nn.SiLU(), nn.Dropout2d(0.3)
-        )
-        self.aux_head = nn.Sequential(
-            nn.Conv2d(embedding_dim, embedding_dim // 2, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(embedding_dim // 2, num_classes, 1)
-        )
-        self.classifier = nn.Conv2d(embedding_dim, num_classes, 1)
-
-    def forward(self, feature_list, train_mode=True):
-        projected = [self.refiners[i](f) for i, f in enumerate(feature_list)]
-        out = torch.cat(projected, dim=1)
-        out = self.lka(out)
-        out = self.fusion(out)
-        if train_mode: return self.classifier(out), self.aux_head(projected[-2])
-        return self.classifier(out)
-
-class Dinov2AdvancedTerrainModel(nn.Module):
-    def __init__(self, num_classes, img_size=(540, 960), backbone_size="base"):
-        super().__init__()
-        backbone_archs = {"small": "vits14", "base": "vitb14_reg", "large": "vitl14_reg"}
-        print(f"Loading Backbone: {backbone_archs[backbone_size]}")
-        self.backbone = torch.hub.load("facebookresearch/dinov2", f"dinov2_{backbone_archs[backbone_size]}")
-        self.feature_indices = [2, 5, 8, 11] 
-        self.token_h, self.token_w = img_size[0] // 14, img_size[1] // 14
-        self.decoder = DeepComplexDecoder(self.backbone.embed_dim, 256, num_classes)
-
-    def forward(self, x):
-        feats = []
-        out = self.backbone.prepare_tokens_with_masks(x)
-        for i, block in enumerate(self.backbone.blocks):
-            out = block(out)
-            if i in self.feature_indices:
-                t = out[:, -(self.token_h * self.token_w):, :] 
-                t = t.reshape(-1, self.token_h, self.token_w, self.backbone.embed_dim).permute(0, 3, 1, 2)
-                feats.append(t)
-        decoder_output = self.decoder(feats, train_mode=False)
-        return F.interpolate(decoder_output, size=x.shape[2:], mode='bilinear', align_corners=False)
-
-# --- App Logic ---
-app = Flask(__name__)
-
-# NOTE: No upload folders needed anymore.
-
-model = None
-transform = transforms.Compose([
-    transforms.Resize((IMG_HEIGHT, IMG_WIDTH)), transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-def init_model():
-    global model
-    model = Dinov2AdvancedTerrainModel(NUM_CLASSES, (IMG_HEIGHT, IMG_WIDTH), backbone_size="base")
+# ---------------------------------------------------------
+# 2. HELPER FUNCTIONS
+# ---------------------------------------------------------
+def get_endpoint_status():
+    """Checks SageMaker Endpoint Status."""
     try:
-        print(f"Loading weights from {MODEL_PATH}")
-        checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
-        state_dict = checkpoint.get('model_state_dict', checkpoint)
-        model.load_state_dict(state_dict)
-    except Exception as e:
-        print(f"Warning: Could not load model weights ({e}). Initializing with random weights.")
-    
-    model.to(DEVICE).eval()
-    # Warmup
-    model(torch.randn(1, 3, IMG_HEIGHT, IMG_WIDTH).to(DEVICE))
-    print("System Ready.")
+        response = sm_client.describe_endpoint(EndpointName=ENDPOINT_NAME)
+        status = response['EndpointStatus']
+        if status == 'InService':
+            return "online", "ONLINE"
+        elif status in ['Creating', 'Updating']:
+            return "loading", status.upper()
+        else:
+            return "offline", status.upper()
+    except Exception:
+        return "offline", "UNREACHABLE"
 
-def colorize_mask(mask):
-    """Converts (H,W) index mask to PIL Image."""
+def mask_to_color(mask):
+    """Converts 2D mask to 3D Color Image."""
     h, w = mask.shape
-    img = np.zeros((h, w, 3), dtype=np.uint8)
+    color_mask = np.zeros((h, w, 3), dtype=np.uint8)
     for i, color in enumerate(PALETTE):
-        img[mask == i] = color
-    return Image.fromarray(img)
+        color_mask[mask == i] = color
+    return Image.fromarray(color_mask)
 
-def image_to_base64(pil_img):
-    """Encodes PIL image to Base64 string for HTML display."""
-    buffered = io.BytesIO()
-    pil_img.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    return f"data:image/png;base64,{img_str}"
-
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        file = request.files.get('file')
-        if not file or not file.filename: return 'Error', 400
-        
-        # 1. Read Image from RAM
-        img_bytes = file.read()
-        try:
-            img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
-        except:
-            return "Invalid Image", 400
-
-        # Create display version of source image
-        # (Optional: resize large images to save bandwidth)
-        display_img = img.resize((IMG_WIDTH, IMG_HEIGHT)) 
-        src_b64 = image_to_base64(display_img)
-
-        # 2. Inference
-        t_start = time.time()
-        with torch.no_grad():
-            logits = model(transform(img).unsqueeze(0).to(DEVICE))
-            duration = round((time.time() - t_start) * 1000, 1)
-            pred_mask = torch.argmax(logits, dim=1).squeeze().cpu().numpy()
-            
-            # Metric: Confidence
-            probs = F.softmax(logits, dim=1)
-            max_probs, _ = torch.max(probs, dim=1)
-            avg_confidence = round(max_probs.mean().item() * 100, 2)
-
-        
-        # Metric: Distribution
-        total_pixels = pred_mask.size
-        unique_ids, counts = np.unique(pred_mask, return_counts=True)
-        class_stats = []
-        for uid, count in zip(unique_ids, counts):
-            if uid == 0: continue 
-            if uid in LABELS:
-                pct = round((count / total_pixels) * 100, 1)
-                class_stats.append({"name": LABELS[uid], "pct": pct, "id": int(uid)})
-        class_stats.sort(key=lambda x: x['pct'], reverse=True)
-
-        # 3. Generate Result Images in RAM
-        res_pil = colorize_mask(pred_mask)
-        res_b64 = image_to_base64(res_pil)
-
-        raw_pil = Image.fromarray(pred_mask.astype(np.uint8))
-        raw_b64 = image_to_base64(raw_pil)
-        
-        # Return Base64 strings instead of file paths
-        return render_template('index.html', 
-                               src=src_b64, 
-                               res=res_b64, 
-                               raw_mask=raw_b64,
-                               time=duration, 
-                               confidence=avg_confidence, 
-                               classes=class_stats)
+def process_true_mask(mask_file, target_size):
+    """Loads and maps the ground truth mask to class IDs."""
+    # 1. Load and Resize (Nearest Neighbor to preserve values)
+    mask = Image.open(mask_file).resize(target_size, Image.NEAREST)
+    mask_np = np.array(mask)
     
-    return render_template('index.html')
+    # 2. Map raw values to 0-10
+    clean_mask = np.zeros_like(mask_np, dtype=np.uint8)
+    for raw_val, class_idx in MASK_MAPPING.items():
+        clean_mask[mask_np == raw_val] = class_idx
+        
+    return clean_mask
 
-if __name__ == '__main__':
-    init_model()
-    app.run(host='0.0.0.0', port=5000)
+def calculate_metrics(pred_mask, true_mask, num_classes=11):
+    """Calculates mIoU and Pixel Accuracy."""
+    # 1. Pixel Accuracy
+    correct = (pred_mask == true_mask).sum()
+    total = true_mask.size
+    pixel_acc = (correct / total) * 100
+
+    # 2. Mean IoU
+    iou_list = []
+    for c in range(num_classes):
+        # Create boolean masks for current class
+        p_inds = (pred_mask == c)
+        t_inds = (true_mask == c)
+        
+        if t_inds.sum() == 0:
+            continue # Skip classes not present in Ground Truth
+            
+        intersection = (p_inds & t_inds).sum()
+        union = (p_inds | t_inds).sum()
+        
+        if union > 0:
+            iou_list.append(intersection / union)
+    
+    miou = (sum(iou_list) / len(iou_list)) * 100 if iou_list else 0.0
+    
+    return round(miou, 2), round(pixel_acc, 2)
+
+def get_class_dist(mask):
+    """Calculates class percentage."""
+    total = mask.size
+    unique, counts = np.unique(mask, return_counts=True)
+    dist = []
+    for cid, count in zip(unique, counts):
+        if cid in CLASS_NAMES and (count/total)*100 > 0.1:
+            dist.append({"name": CLASS_NAMES[cid], "pct": round((count/total)*100, 1)})
+    return sorted(dist, key=lambda x: x['pct'], reverse=True)
+
+# ---------------------------------------------------------
+# 3. ROUTES
+# ---------------------------------------------------------
+@app.route("/", methods=["GET", "POST"])
+def index():
+    status_class, status_text = get_endpoint_status()
+
+    if request.method == "POST":
+        file = request.files.get("file")
+        mask_file = request.files.get("mask_file") # Optional Ground Truth
+        
+        if file:
+            filename = f"upload_{int(time.time())}.jpg"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            with open(filepath, "rb") as f: payload = f.read()
+            
+            # --- START TIMER ---
+            start_time = time.time()
+            try:
+                response = sm_runtime.invoke_endpoint(
+                    EndpointName=ENDPOINT_NAME, 
+                    ContentType="application/x-image", 
+                    Body=payload
+                )
+                duration_ms = round((time.time() - start_time) * 1000)
+                
+                result = json.loads(response['Body'].read().decode())
+                pred_mask = np.array(result).squeeze()
+
+                # --- METRICS LOGIC ---
+                miou, pixel_acc = None, None
+                true_mask_filename = None
+                
+                # Check if user uploaded a true mask
+                if mask_file and mask_file.filename != '':
+                    # Target size must match prediction shape (Width, Height)
+                    target_size = (pred_mask.shape[1], pred_mask.shape[0])
+                    true_mask = process_true_mask(mask_file, target_size)
+                    
+                    # Calculate
+                    miou, pixel_acc = calculate_metrics(pred_mask, true_mask)
+                    
+                    # Save True Mask Image
+                    true_mask_filename = f"true_mask_{int(time.time())}.png"
+                    mask_to_color(true_mask).save(os.path.join(app.config['UPLOAD_FOLDER'], true_mask_filename))
+
+                # --- SAVE PREDICTION VISUALS ---
+                res_name = f"res_{int(time.time())}.png"
+                mask_to_color(pred_mask).save(os.path.join(app.config['UPLOAD_FOLDER'], res_name))
+                
+                raw_name = f"raw_{int(time.time())}.png"
+                Image.fromarray(pred_mask.astype(np.uint8)).save(os.path.join(app.config['UPLOAD_FOLDER'], raw_name))
+
+                return render_template(
+                    'index.html',
+                    status_class=status_class, status_text=status_text,
+                    src=url_for('static', filename=filename),
+                    res=url_for('static', filename=res_name),
+                    raw_mask=url_for('static', filename=raw_name),
+                    # Optional Data
+                    true_mask_src=url_for('static', filename=true_mask_filename) if true_mask_filename else None,
+                    miou=miou,
+                    pixel_acc=pixel_acc,
+                    time=duration_ms, 
+                    classes=get_class_dist(pred_mask),
+                    class_map=CLASS_NAMES
+                )
+            except Exception as e:
+                return f"<h3>Error: {e}</h3><p>Make sure the Endpoint '{ENDPOINT_NAME}' is InService.</p>"
+
+    return render_template('index.html', status_class=status_class, status_text=status_text)
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=8000, debug=True)
