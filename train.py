@@ -210,25 +210,86 @@ class MaskDataset(Dataset):
     def __init__(self, data_dir, is_train=True):
         self.img_dir = os.path.join(data_dir, 'Color_Images')
         self.msk_dir = os.path.join(data_dir, 'Segmentation')
+        # Filter for valid images only
         self.ids = [f for f in os.listdir(self.img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        self.norm = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        
+        # Standard ImageNet Normalization
+        self.norm_mean = [0.485, 0.456, 0.406]
+        self.norm_std = [0.229, 0.224, 0.225]
+        
         self.mapping = {0:0, 100:1, 200:2, 300:3, 500:4, 550:5, 600:6, 700:7, 800:8, 7100:9, 10000:10}
         self.is_train = is_train
+
     def __len__(self): return len(self.ids)
-    def __getitem__(self, idx):
-        id_ = self.ids[idx]
-        img = Image.open(os.path.join(self.img_dir, id_)).convert("RGB").resize((W, H))
-        msk_pil = Image.open(os.path.join(self.msk_dir, id_)).resize((W, H), Image.NEAREST)
-        raw_msk = np.array(msk_pil)
+
+    def map_mask_values(self, raw_msk):
+        """Maps raw dataset values (0, 100, 200...) to class indices (0, 1, 2...)."""
+        # Using a lookup array is much faster than a loop
+        # We create a lookup table for max value (10000)
+        # But since your loop works, we stick to it for safety, just optimized with NumPy
         final_msk = np.zeros_like(raw_msk, dtype=np.uint8)
         for raw_val, class_idx in self.mapping.items():
             final_msk[raw_msk == raw_val] = class_idx
+        return final_msk
+
+    def __getitem__(self, idx):
+        id_ = self.ids[idx]
+        
+        # 1. Load Data
+        img = Image.open(os.path.join(self.img_dir, id_)).convert("RGB")
+        msk_pil = Image.open(os.path.join(self.msk_dir, id_)) # Keep as PIL for transforms
+        
+        # 2. Base Resize (Crucial: Mask must use NEAREST to preserve values)
+        img = TF.resize(img, (H, W), interpolation=transforms.InterpolationMode.BILINEAR)
+        msk_pil = TF.resize(msk_pil, (H, W), interpolation=transforms.InterpolationMode.NEAREST)
+
+        # 3. STRONG AUGMENTATIONS (Train Only)
+        if self.is_train:
+            # A. Random Horizontal Flip (50%)
+            # NOTE: Vertical Flip is BAD for Sky/Land (Sky is never at the bottom)
+            if random.random() > 0.5:
+                img = TF.hflip(img)
+                msk_pil = TF.hflip(msk_pil)
+
+            # B. Random Affine (Rotation + Scale + Shift) (50%)
+            # This simulates different camera angles and distances
+            if random.random() > 0.5:
+                # Random params
+                angle = random.uniform(-15, 15)  # +/- 15 degree tilt
+                scale = random.uniform(0.8, 1.2) # Zoom in/out 20%
+                translate = (random.uniform(0, 0.1 * W), random.uniform(0, 0.1 * H)) # Shift
+                
+                img = TF.affine(img, angle=angle, translate=translate, scale=scale, shear=0, 
+                                interpolation=transforms.InterpolationMode.BILINEAR)
+                msk_pil = TF.affine(msk_pil, angle=angle, translate=translate, scale=scale, shear=0, 
+                                    interpolation=transforms.InterpolationMode.NEAREST)
+
+            # C. Color Jitter (Photometric Distortions) (80% - High Probability)
+            # Only applied to Image, NOT Mask
+            if random.random() > 0.2:
+                # Brightness: Sunny vs Cloudy
+                # Contrast: Harsh shadows vs Soft light
+                # Saturation: Vibrant vs Dull
+                img = TF.adjust_brightness(img, random.uniform(0.6, 1.4))
+                img = TF.adjust_contrast(img, random.uniform(0.6, 1.4))
+                img = TF.adjust_saturation(img, random.uniform(0.6, 1.4))
+                img = TF.adjust_hue(img, random.uniform(-0.05, 0.05)) # Slight hue shift
+
+            # D. Gaussian Blur (Simulate out-of-focus background) (20%)
+            if random.random() > 0.8:
+                sigma = random.uniform(0.1, 2.0)
+                img = TF.gaussian_blur(img, kernel_size=3, sigma=sigma)
+
+        # 4. Convert Mask and Map Values
+        raw_msk = np.array(msk_pil)
+        final_msk = self.map_mask_values(raw_msk)
+        
+        # 5. Final Tensor Conversion
         img_t = TF.to_tensor(img)
+        img_t = TF.normalize(img_t, mean=self.norm_mean, std=self.norm_std)
         msk_t = torch.from_numpy(final_msk).long()
-        if self.is_train and random.random() > 0.5:
-            img_t = TF.hflip(img_t)
-            msk_t = TF.hflip(msk_t)
-        return self.norm(img_t), msk_t, id_
+        
+        return img_t, msk_t, id_
 
 def calculate_iou_stats(pred, target, num_classes):
     inter_list, union_list = [], []
