@@ -1,0 +1,17 @@
+# Core PyTorch ecosystem (Versions depend on your CUDA setup)
+torch>=2.0.0
+torchvision>=0.15.0
+tensorboard
+
+# Model Architecture
+timm>=0.9.0  # Required for DINOv2 backbones
+setuptools==69.5.1
+# Data Processing & Visualization
+numpy
+pandas
+matplotlib
+Pillow
+tqdm
+
+# Web Server (for app.py)
+Flask>=2.3.0

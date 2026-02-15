@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TERRAIN_ANALYSIS_V2.1</title>
+    <style>
+        :root {
+            --bg: #ffffff;
+            --fg: #111111;
+            --border: #e0e0e0;
+            --mono: 'Courier New', Courier, monospace;
+            --sans: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --gap-lg: 40px;
+            --gap-md: 20px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            background-color: var(--bg); color: var(--fg);
+            font-family: var(--sans); min-height: 100vh;
+            display: flex; flex-direction: column;
+        }
+
+        /* HEADER */
+        header {
+            padding: 20px 40px; border-bottom: 1px solid var(--fg);
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--bg); position: sticky; top: 0; z-index: 50;
+        }
+        h1 { font-size: 14px; text-transform: uppercase; letter-spacing: 2px; font-weight: 700; }
+        .status { font-family: var(--mono); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+        .status-dot { width: 8px; height: 8px; background: #00cc00; }
+
+        /* MAIN */
+        main {
+            flex: 1; width: 100%; max-width: 1600px; margin: 0 auto;
+            padding: var(--gap-lg); display: flex; flex-direction: column;
+        }
+
+        /* UPLOAD */
+        .upload-wrapper { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 60vh; }
+        .upload-area {
+            border: 1px dashed var(--fg); padding: 60px 20px; text-align: center;
+            cursor: pointer; transition: all 0.2s; position: relative; background: #fafafa;
+        }
+        .upload-area:hover { background-color: #f0f0f0; border-color: #000; }
+        .upload-text { font-family: var(--mono); font-size: 12px; letter-spacing: 1px; margin-top: 15px; text-transform: uppercase; }
+        input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
+
+        /* GRID */
+        .results-grid { display: grid; grid-template-columns: 3fr 1fr; gap: var(--gap-lg); align-items: start; }
+        .visuals { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-md); }
+        .img-container { border: 1px solid var(--border); position: relative; background: #f9f9f9; width: 100%; display: block; }
+        .img-container img { width: 100%; height: auto; display: block; }
+        .label {
+            position: absolute; top: 0; left: 0; background: var(--fg); color: var(--bg);
+            padding: 6px 10px; font-family: var(--mono); font-size: 10px; 
+            text-transform: uppercase; letter-spacing: 1px; pointer-events: none; z-index: 10;
+        }
+
+        /* METRICS */
+        .metrics-panel { 
+            border-left: 1px solid var(--border); padding-left: var(--gap-lg); 
+            display: flex; flex-direction: column; gap: 40px; 
+            position: sticky; top: 100px;
+        }
+        .metric-group h3 { 
+            font-family: var(--mono); font-size: 10px; color: #888; 
+            margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; 
+        }
+        .metric-value { font-size: 32px; font-weight: 300; letter-spacing: -1px; }
+        .metric-unit { font-size: 12px; color: #666; margin-left: 5px; font-weight: 400; }
+        
+        .class-list { list-style: none; width: 100%; }
+        .class-list li { 
+            padding: 10px 0; border-bottom: 1px solid #eee; 
+            font-size: 13px; display: flex; align-items: center; justify-content: space-between; color: #444;
+        }
+        .class-info { display: flex; align-items: center; gap: 10px; }
+        .class-pct { font-family: var(--mono); font-size: 12px; font-weight: bold; }
+        .icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; opacity: 0.6; }
+
+        .btn { 
+            background: var(--fg); color: var(--bg); border: none; padding: 14px 0; width: 100%;
+            font-family: var(--mono); font-size: 12px; text-transform: uppercase; 
+            cursor: pointer; text-decoration: none; display: inline-flex; 
+            align-items: center; justify-content: center; gap: 10px; transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.85; }
+
+        /* TOOLTIP */
+        #tooltip {
+            position: fixed; background: rgba(10, 10, 10, 0.95); color: #fff;
+            padding: 6px 10px; font-family: var(--mono); font-size: 11px;
+            pointer-events: none; display: none; z-index: 100;
+            border: 1px solid #444; white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        @media (max-width: 1024px) {
+            .results-grid { grid-template-columns: 1fr; gap: 40px; }
+            .metrics-panel {
+                border-left: none; border-top: 1px solid var(--border);
+                padding-left: 0; padding-top: 40px;
+                display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; position: static;
+            }
+            .btn { width: auto; padding: 14px 30px; }
+        }
+        @media (max-width: 768px) {
+            .visuals { grid-template-columns: 1fr; }
+            .metrics-panel { grid-template-columns: 1fr; gap: 30px; }
+            .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="hiddenCanvas" style="display: none;"></canvas>
+    <div id="tooltip">Scanning...</div>
+
+    <header>
+        <h1>Ota-verse // Terrain Segmentation</h1>
+        <div class="status"><div class="status-dot"></div>ONLINE</div>
+    </header>
+
+    <main>
+        {% if not src %}
+        <div class="upload-wrapper">
+            <form action="/" method="post" enctype="multipart/form-data">
+                <div class="upload-area">
+                    <svg class="icon" style="width: 32px; height: 32px; stroke: #333;" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                    <div class="upload-text">Drop Widescreen Image (960x540)</div>
+                    <input type="file" name="file" onchange="this.form.submit()">
+                </div>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if src %}
+        <div class="results-grid">
+            <div class="visuals">
+                <div class="img-container">
+                    <div class="label">01 // Source Input</div>
+                    <img src="{{ src }}" alt="Original Input">
+                </div>
+                <div class="img-container">
+                    <div class="label">02 // Segmentation Map</div>
+                    <img src="{{ res }}" id="resultImage" alt="Segmentation Result">
+                </div>
+            </div>
+
+            <div class="metrics-panel">
+                <div class="metric-group">
+                    <h3>Inference Latency</h3>
+                    <div class="metric-value">{{ time }}<span class="metric-unit">ms</span></div>
+                </div>
+
+                <div class="metric-group">
+                    <h3>Model Confidence</h3>
+                    <div class="metric-value">{{ confidence }}<span class="metric-unit">%</span></div>
+                </div>
+
+                <div class="metric-group" style="grid-column: span 1 / -1;">
+                    <h3>Terrain Distribution</h3>
+                    <ul class="class-list">
+                        {% for item in classes %}
+                        <li>
+                            <div class="class-info">
+                                <svg class="icon" viewBox="0 0 24 24"><path stroke-linecap="square" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                {{ item.name }}
+                            </div>
+                            <div class="class-pct">{{ item.pct }}%</div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+
+                <div class="metric-group" style="align-self: flex-start; width: 100%;">
+                    <a href="/" class="btn">
+                        <svg class="icon" style="stroke: #fff;" viewBox="0 0 24 24"><path stroke-linecap="square" d="M4 12h16m0 0l-4-4m4 4l-4 4" /></svg>
+                        Analyze Next
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            const CLASS_MAP = {
+                0: "Background", 1: "Trees", 2: "Lush Bushes", 3: "Dry Grass",
+                4: "Dry Bushes", 5: "Ground Clutter", 6: "Logs", 7: "Rocks",
+                8: "Landscape", 9: "Sky"
+            };
+            const resultImg = document.getElementById('resultImage');
+            const tooltip = document.getElementById('tooltip');
+            const canvas = document.getElementById('hiddenCanvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            
+            const rawMask = new Image();
+            rawMask.src = "{{ raw_mask }}";
+            rawMask.onload = function() { 
+                canvas.width = rawMask.width; 
+                canvas.height = rawMask.height; 
+                ctx.drawImage(rawMask, 0, 0); 
+            };
+
+            resultImg.addEventListener('mousemove', function(e) {
+                if (!rawMask.complete) return;
+                const rect = resultImg.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (rawMask.width / rect.width);
+                const y = (e.clientY - rect.top) * (rawMask.height / rect.height);
+                const pixel = ctx.getImageData(x, y, 1, 1).data;
+                const classId = pixel[0];
+                const className = CLASS_MAP[classId] || "VOID";
+                tooltip.style.display = 'block';
+                tooltip.style.left = (e.clientX + 15) + 'px';
+                tooltip.style.top = (e.clientY + 15) + 'px';
+                tooltip.innerHTML = `<span style="opacity:0.5">ID:${classId}</span> <b>${className.toUpperCase()}</b>`;
+            });
+            resultImg.addEventListener('mouseleave', function() { tooltip.style.display = 'none'; });
+        </script>
+        {% endif %}
+    </main>
+</body>
+</html>
