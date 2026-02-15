@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import torchvision.transforms as transforms
 
-def compute_iou(pred, target, num_classes=10, ignore_index=255):
+def compute_iou(pred, target, num_classes=11, ignore_index=255):
     """Compute IoU for each class and return mean IoU (scalar)."""
     # Use argmax to get class indices
     pred = torch.argmax(pred, dim=1)
@@ -37,7 +37,7 @@ def compute_iou(pred, target, num_classes=10, ignore_index=255):
     # Return mean IoU as a simple float
     return np.mean(iou_list) if iou_list else 0.0
 
-def compute_dice(pred, target, num_classes=10, smooth=1e-6):
+def compute_dice(pred, target, num_classes=11, smooth=1e-6):
     """Compute Mean Dice Score (scalar)."""
     pred = torch.argmax(pred, dim=1)
     pred = pred.view(-1)
