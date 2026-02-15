@@ -1,3 +1,4 @@
+<pre style="color: red;">
 ____  _____ _____ ____  ____  _____ 
  |  _ \| ____/ ____/ ___|/ __ \|  _ \ 
  | |_) |  _|| |   | |   | |  | | | | |
@@ -6,6 +7,7 @@ ____  _____ _____ ____  ____  _____
                                       
  TERRAIN SEMANTIC SEGMENTATION SYSTEM
  ====================================
+</pre>
 
 This repository hosts a state-of-the-art semantic segmentation pipeline designed for complex terrain analysis. It utilizes a DINOv2 (ViT-B/14) backbone fused with a custom deep residual decoder to achieve high-fidelity segmentation across 11 terrain classes. The system includes a full training pipeline, an automated evaluation suite, and a Flask-based web interface integrated with AWS SageMaker for real-time inference.
 
