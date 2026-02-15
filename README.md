@@ -111,16 +111,6 @@ cd KrackSegmentation
 pip install -r requirments.txt
 ```
 
-**Core Dependencies:**
-- torch >= 2.0.0
-- torchvision >= 0.15.0
-- flask >= 2.3.0
-- pillow >= 9.5.0
-- numpy >= 1.24.0
-- tqdm >= 4.65.0
-- matplotlib >= 3.7.0
-- tensorboard >= 2.13.0
-
 ### Step 3: Prepare Dataset
 
 Organize your dataset in the following structure:
@@ -184,11 +174,8 @@ Then open your browser and navigate to `http://localhost:6006`
 
 **TensorBoard Visualizations:**
 - Training and validation loss curves
-- Mean IoU (mIoU) over epochs
-- Pixel accuracy metrics
+- Mean IoU (mIoU) over steps
 - Side-by-side comparisons: Input | Ground Truth | Prediction
-- Learning rate schedule
-- Per-class IoU breakdown
 
 ![TensorBoard Visualization](images/tensorboard.png)
 
@@ -200,39 +187,12 @@ After training, evaluate the model on the test set:
 python test.py
 ```
 
-**Test Output:**
-
-**Terminal Display:**
-```
---- Starting Evaluation on cuda ---
-Loaded weights from stats/best_model.pth
-Testing: 100%|████████████████| 150/150 [00:45<00:00, 3.31it/s]
-
-=== Test Results ===
-Mean IoU: 0.7523
-Pixel Accuracy: 89.45%
-
-Per-Class IoU:
-  Class 0 (Background):    0.8234
-  Class 1 (Trees):         0.7891
-  Class 2 (Lush Bushes):   0.6543
-  Class 3 (Dry Grass):     0.7123
-  ...
-```
-
 **Visual Outputs:**  
 Comparison images saved to `stats/test_results/` with format:
 ```
 test_sample_001.png: [Original Image | Ground Truth | Prediction]
 test_sample_002.png: [Original Image | Ground Truth | Prediction]
-...
 ```
-
-Each output image contains three panels horizontally concatenated:
-1. Original RGB input image
-2. Ground truth segmentation (color-coded)
-3. Model prediction (color-coded)
-
 ### 4. Running the Web Interface
 
 Launch the Flask application for interactive inference:
@@ -304,24 +264,6 @@ Rocks:            7.6%
 ...
 ```
 
-### Color Palette Reference
-
-| Class          | RGB Color       | Hex Code | Visual |
-|----------------|-----------------|----------|--------|
-| Background     | (0, 0, 0)       | #000000  | Black  |
-| Trees          | (128, 0, 0)     | #800000  | Maroon |
-| Lush Bushes    | (0, 128, 0)     | #008000  | Green  |
-| Dry Grass      | (128, 128, 0)   | #808000  | Olive  |
-| Dry Bushes     | (0, 0, 128)     | #000080  | Navy   |
-| Ground Clutter | (128, 0, 128)   | #800080  | Purple |
-| Flowers        | (0, 128, 128)   | #008080  | Teal   |
-| Logs           | (128, 128, 128) | #808080  | Gray   |
-| Rocks          | (64, 0, 0)      | #400000  | Dark Red |
-| Landscape      | (192, 0, 0)     | #C00000  | Red    |
-| Sky            | (64, 128, 0)    | #408000  | Dark Green |
-
----
-
 ## Visualization Examples
 
 ### Training Visualization (TensorBoard)
@@ -372,87 +314,9 @@ The web interface provides:
 
 ---
 
-## Troubleshooting
-
-### Data Preparation Issues
-
-**Missing directory error:**
-```bash
-# Ensure all data directories exist
-ls data/train/Color_Images
-ls data/train/Segmentation
-```
-
-**Empty dataset error:**
-```python
-# Check image-mask pairing
-len(os.listdir('data/train/Color_Images')) == len(os.listdir('data/train/Segmentation'))
-```
-
-### Training Issues
-
-**TensorBoard not updating:**
-```bash
-# Ensure logs directory exists
-mkdir -p stats/logs
-
-# Restart TensorBoard
-tensorboard --logdir=stats/logs --reload_interval=1
-```
-
-**Out of memory error:**
-```python
-# Reduce batch size in train.py
-BATCH_SIZE = 2  # Instead of 4
-```
-
-### Testing Issues
-
-**Model not found:**
-```bash
-# Verify model checkpoint exists
-ls stats/best_model.pth
-```
-
-**No output images:**
-```bash
-# Check test_results directory permissions
-mkdir -p stats/test_results
-chmod 755 stats/test_results
-```
-
-### Web Server Issues
-
-**Port already in use:**
-```bash
-# Kill existing process
-lsof -ti:8000 | xargs kill -9
-
-# Or change port in server/app.py
-app.run(host='127.0.0.1', port=8001, debug=False)
-```
-
-**Model loading error:**
-```bash
-# Verify relative path from server directory
-cd server
-ls ../stats/best_model.pth
-```
-
----
-
 ## Advanced Configuration
 
-### Modifying Training Parameters
-
 Edit `train.py` to customize:
-
-```python
-BATCH_SIZE = 4        # Increase with more GPU memory
-LR = 6e-5             # Learning rate
-EPOCHS = 10           # Training duration
-W, H = 476, 266       # Input resolution
-```
 
 ### Custom Class Weights
 
@@ -504,26 +368,6 @@ Output (11, 266, 476)
 
 ---
 
-## Citation
-
-If you use this work in your research, please cite:
-
-```bibtex
-@software{dinoterrain_max,
-  title={DinoTerrainMax: Semantic Segmentation for Terrain Analysis},
-  author={Ota-Verse Research Team},
-  year={2026},
-  url={https://github.com/Sakshamsetia/KrackSegmentation}
-}
-```
-
----
-
-## License
-
-This project is developed as part of the Ota-Verse Terrain Analysis Initiative.
-
----
 
 ## Acknowledgments
 
@@ -534,7 +378,5 @@ Built upon foundations from:
 - Flask Web Framework
 
 ---
-
-**For questions, issues, or contributions, please open an issue on the GitHub repository.**
 
 [View Repository](https://github.com/Sakshamsetia/KrackSegmentation)
