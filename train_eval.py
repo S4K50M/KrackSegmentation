@@ -25,7 +25,7 @@ W, H = 476, 266
 DATA_DIR = 'data/train'
 VAL_DIR = 'data/val'
 TEST_DIR = 'data/test'
-OUTPUT_DIR = 'stats_v2_final'
+OUTPUT_DIR = 'stats'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 NUM_CLASSES = 11
