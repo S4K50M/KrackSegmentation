@@ -9,7 +9,7 @@
 
 # DinoTerrainMax: Semantic Segmentation Analysis
 
-**High-Fidelity Terrain Classification System**
+**High-Fidelity Terrain Classification and grounding System**
 
 [![Live Demo](https://img.shields.io/badge/Demo-Live-brightgreen)](http://43.204.148.104)
 
